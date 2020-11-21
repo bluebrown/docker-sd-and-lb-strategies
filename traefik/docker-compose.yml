@@ -1,0 +1,28 @@
+version: "3.8"
+
+services:
+  traefik:
+    image: "traefik:v2.3"
+    command:
+      - "--log.level=DEBUG"
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+
+  whoami:
+    image: "traefik/whoami"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.port=80"
+      - "traefik.http.routers.whoami.entrypoints=web"
+      - "traefik.http.routers.whoami.rule=PathPrefix(`/`)"
+      - "traefik.http.services.whoami.loadbalancer.sticky=true"
+      - "traefik.http.services.whoami.loadbalancer.sticky.cookie.name=REPLICA_ADDRESS"
+    deploy:
+      replicas: 3

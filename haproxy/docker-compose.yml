@@ -1,0 +1,15 @@
+version: '3.8'
+services:
+
+  loadbalancer:
+    image: haproxy
+    volumes: 
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    ports:
+      - 80:80
+      - 443:443
+  
+  whoami:
+    image: "traefik/whoami"
+    deploy:
+      replicas: 3

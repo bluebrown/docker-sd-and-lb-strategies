@@ -1,0 +1,34 @@
+version: '3.8'
+services:
+
+  consul:
+    image:  gliderlabs/consul-server:latest
+    command: "-advertise=${MYHOST} -server -bootstrap"
+    container_name: consul
+    hostname: ${MYHOST}
+    ports:
+    - 8500:8500
+
+  registrator:
+    image: gliderlabs/registrator:latest
+    command: "-ip ${MYHOST} consul://${MYHOST}:8500"
+    container_name: registrator
+    hostname: ${MYHOST}
+    depends_on:
+    - consul
+    volumes:
+    - /var/run/docker.sock:/tmp/docker.sock
+
+  proxy:
+    build: .
+    ports:
+      - 80:80
+    depends_on: 
+      - consul
+
+  whoami:
+    image: "traefik/whoami"
+    deploy:
+      replicas: 3
+    ports:
+      - "80"
