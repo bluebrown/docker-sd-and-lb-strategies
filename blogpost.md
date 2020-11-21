@@ -1,6 +1,7 @@
 # Docker Service Discovery & Loadbalancing Strategies
 
 A common question that arises is how does service discovery in docker work. And how does docker route the traffic.
+
 This project showcases some strategies for service discovery with docker and docker-compose. You can find the working examples and this post also in the [github repo](https://github.com/bluebrown/docker-sd-and-lb-strategies)
 
 Before we dive into more advanced strategies, lets review some of the basics.
