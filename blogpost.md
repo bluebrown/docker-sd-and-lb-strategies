@@ -1,13 +1,13 @@
-# Docker Networking 101 - Service Discovery and Loadbalancing 
+# Docker Service Discovery & Loadbalancing Strategies
 
 A common question that arises is how does service discovery in docker work. And how does docker route the traffic.
-This project showcases some strategies for service discovery with docker and docker-compose. 
+This project showcases some strategies for service discovery with docker and docker-compose. You can find the working examples and this post also in the [github repo](https://github.com/bluebrown/docker-sd-and-lb-strategies)
 
 Before we dive into more advanced strategies, lets review some of the basics.
 
 ## Docker's built-in Nameserver & Loadbalancer
 
-Docker comes with a built-in [nameserver][1]. The server is, by default, reachable via `127.0.0.11:53`.
+Docker comes with a built-in [nameserver](https://docs.docker.com/config/containers/container-networking/#dns-services). The server is, by default, reachable via `127.0.0.11:53`.
 
 Every container has by default a nameserver entry in `/etc/resolve.conf`, so it is not required to specify the address of the nameserver from within the container. That is why you can find your service from within the network with `service` or `task_service_n`. 
 
@@ -15,10 +15,7 @@ If you do `task_service_n` then you will get the address of the corresponding se
 
 If you only ask for the `service` docker will perform `internal load balancing` between container in the same network and `external load balancing` to handle requests from outside. 
 
-When swarm is used, docker will additionally use an two special [overloay networks][2]. It will use an `ingress network` on each host which handled trafic to the swarm and allows to query any service from any node in the swarm. Additionally it will create a bridge network called `docker_gwbridge` which connected the individual docker hosts and their overloay networks (including ingress).
-
-  [1]: https://docs.docker.com/config/containers/container-networking/#dns-services
-  [2]: https://docs.docker.com/network/overlay/
+When swarm is used, docker will additionally use an two special [overloay networks](https://docs.docker.com/network/overlay/). It will use an `ingress network` on each host which handled trafic to the swarm and allows to query any service from any node in the swarm. Additionally it will create a bridge network called `docker_gwbridge` which connected the individual docker hosts and their overloay networks (including ingress).
 
 ## Example
 
@@ -35,7 +32,7 @@ services:
 
 ### DNS Lookup
 
-You can use tools such as `dig` or `nslookup` to do a DNS lookup against the nameserver in the *same network*.
+You can use tools such as [dig](https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/6/html/deployment_guide/s2-bind-dig) or [nslookup](https://docs.microsoft.com/en-us/windows-server/administration/windows-commands/nslookup) to do a DNS lookup against the nameserver in the *same network*.
 
 ```shell
 docker run --rm --network dig_default tutum/dnsutils dig whoami
@@ -85,7 +82,7 @@ docker run --rm --network dig_default tutum/dnsutils dig +short dig_whoami_2
 
 ### Load balancing
 
-The default loadbalancing happens on the transport layer or layer 4 of the OSI model. So it is TCP/UDP based. So it is not possible to inpsect and manipulate http headers with this method. In the enterprise edition it is apparently possible to use labels similar to the ones treafik is using in the example a bit further down.
+The default loadbalancing happens on the transport layer or layer 4 of the [OSI Model](https://www.cloudflare.com/learning/ddos/glossary/open-systems-interconnection-model-osi/). So it is TCP/UDP based. So it is not possible to inpsect and manipulate http headers with this method. In the enterprise edition it is apparently possible to use labels similar to the ones treafik is using in the example a bit further down.
 
 
   [3]: https://blog.octo.com/en/how-does-it-work-docker-part-3-load-balancing-service-discovery-and-security/
@@ -126,7 +123,7 @@ Health checks, by default, are done by checking the process id (PID) of the cont
 
 Oftentimes other health checks are required. The container may be running but the application inside has crashed. In many cases a TCP or HTTP check is preferred. 
 
-It is possible to bake a custom health checks into images.
+It is possible to bake a custom health checks into images. For example, using [curl](https://curl.se/docs/manual.html) to perform L7 health checks.
 
 ```Dockerfile
 FROM traefik/whoami
@@ -151,7 +148,7 @@ If the built in features are not sufficent, some strategies can be implemented t
 
 ### HAProxy
 
-Haproxy can use the docker nameserver in combination with dynamic server templates to discover the running container. Then the traditional proxy features can be leveraged to achieve powerful layer 7 load balancing whith http header manipulation and chaos engeering such as retries.
+[Haproxy](https://www.haproxy.com/) can use the docker nameserver in combination with [dynamic server templates](https://www.haproxy.com/blog/whats-new-haproxy-1-8/#server-template-configuration-directive) to discover the running container. Then the traditional proxy features can be leveraged to achieve powerful layer 7 load balancing whith http header manipulation and [chaos engeering](https://www.haproxy.com/blog/haproxy-layer-7-retries-and-chaos-engineering/) such as retries.
 
 ```yml
 version: '3.8'
@@ -201,9 +198,8 @@ backend whoami
 ### Traefik
 
 The previous method is already pretty decent. However, you may have noticed that it requires knowing which services should be discovered
-and also the number of replicas to discover is hard coded. Traefik, a container native edge router, solves both problems. As long as we enable
-Traefik via label, the service will be discovered. This decentralized the configuration. It is as if each service registers itself. 
-The label can also be used to inspect and manipulate http headers.
+and also the number of replicas to discover is hard coded. [Traefik](https://traefik.io/), a container native edge router, solves both problems. As long as we enable Traefik via [label](https://doc.traefik.io/traefik/v1.4/configuration/backends/docker/#labels-overriding-default-behaviour), the service will be discovered. This decentralized the configuration. It is as if each service registers itself. 
+The label can also be used to [inspect and manipulate http headers](https://doc.traefik.io/traefik/middlewares/headers/).
 
 ```yml
 version: "3.8"
@@ -239,10 +235,12 @@ services:
 
 ### Consul
 
-Consul is a tool for service discovery and configuration management. Services have to be registered via API request. It is a more complex solution that probably only makes sense in bigger clusters, but can be very powerful. Usually it recommended running this on bare metal and not in a container. You could install it alongside, the docker host on each server in your cluster. 
+[Consul](https://www.consul.io/) is a tool for service discovery and configuration management. Services have to be registered via API request. It is a more complex solution that probably only makes sense in bigger clusters, but can be very powerful. Usually it recommended running this on bare metal and not in a container. You could install it alongside, the docker host on each server in your cluster. 
 
-In this example it has been paired with the registrator image, which takes care of registering the docker services in consuls catalog. 
-The catalog can be leveraged in many ways. One of the is to use consul-template. Note that consul comes with its own DNS resolver so in this instance the docker DNS resolver is somewhat neglected.
+In this example it has been paired with the [registrator image](https://github.com/gliderlabs/registrator), which takes care of registering the docker services in consuls catalog. 
+The catalog can be leveraged in many ways. One of the is to use [consul-template](https://github.com/hashicorp/consul-template). 
+
+Note that consul comes with its own DNS resolver so in this instance the docker DNS resolver is somewhat neglected.
 
 ```yml
 version: '3.8'
@@ -320,7 +318,6 @@ template {
 }
 ```
 
-
 ## Conclusion
 
 There are many ways to go about it. Below are a few example options. Of course there are more tools out there and other combinations possible. I have shown how the built in features work and also show cased some advanced strategies to do service discovery and loadbalancing. Below is a feature table of these examples.
@@ -333,3 +330,6 @@ There are many ways to go about it. Below are a few example options. Of course t
 | Load Balancing    | L4        | L4, L7           | L4, L7       | L4, L7                 |
 | Sticky Session    | Yes       | Yes              | Yes          | Depends on proxy       |
 | Metrics           | No        | Stats Page       | Dashboard    | Dashboard              |
+
+
+https://github.com/bluebrown/docker-sd-and-lb-strategies
