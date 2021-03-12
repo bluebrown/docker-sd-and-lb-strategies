@@ -2,7 +2,7 @@
 
 A common question that arises is how does service discovery in docker work. And how does docker route the traffic.
 
-This project showcases some strategies for service discovery with docker and docker-compose. You can find the working examples and this post also in the [github repo](https://github.com/bluebrown/docker-sd-and-lb-strategies)
+This project showcases some strategies for service discovery with docker and docker-compose. You can find the working examples and this post also in the [github repo](https://github.com/bluebrown/docker-sd-and-lb-strategies).
 
 Before we dive into more advanced strategies, lets review some of the basics.
 
@@ -16,7 +16,13 @@ If you do `task_service_n` then you will get the address of the corresponding se
 
 If you only ask for the `service` docker will perform `internal load balancing` between container in the same network and `external load balancing` to handle requests from outside. 
 
-When swarm is used, docker will additionally use an two special [overloay networks](https://docs.docker.com/network/overlay/). It will use an `ingress network` on each host which handled trafic to the swarm and allows to query any service from any node in the swarm. Additionally it will create a bridge network called `docker_gwbridge` which connected the individual docker hosts and their overloay networks (including ingress).
+When swarm is used, docker will additionally use two special [overloay networks](https://docs.docker.com/network/overlay/). An `ingress network` on each host which handles incomming trafic to the swarm and allows to query any service from any node in the swarm. Additionally it will create a bridge network called `docker_gwbridge` which connectes the individual docker hosts and their overloay networks (including ingress).
+
+When using swarm to [deploy services](https://docs.docker.com/compose/compose-file/#deploy), the  behavior as described in the examples below will not work unless endpointmode is set to dns roundrobin instead of vip.
+
+> endpoint_mode: vip - Docker assigns the service a virtual IP (VIP) that acts as the front end for clients to reach the service on a network. Docker routes requests between the client and available worker nodes for the service, without client knowledge of how many nodes are participating in the service or their IP addresses or ports. (This is the default.)
+
+> endpoint_mode: dnsrr - DNS round-robin (DNSRR) service discovery does not use a single virtual IP. Docker sets up DNS entries for the service such that a DNS query for the service name returns a list of IP addresses, and the client connects directly to one of these. DNS round-robin is useful in cases where you want to use your own load balancer, or for Hybrid Windows and Linux applications.
 
 ## Example
 
@@ -120,7 +126,7 @@ Hostname: d922d86eccc6
 
 ## Health Checks
 
-Health checks, by default, are done by checking the process id (PID) of the container on the host kernel. If the process is running successfully, the container is considered healthy. 
+[Health checks](https://docs.docker.com/engine/reference/builder/#healthcheck), by default, are done by checking the process id (PID) of the container on the host kernel. If the process is running successfully, the container is considered healthy. 
 
 Oftentimes other health checks are required. The container may be running but the application inside has crashed. In many cases a TCP or HTTP check is preferred. 
 
@@ -149,7 +155,7 @@ If the built in features are not sufficent, some strategies can be implemented t
 
 ### HAProxy
 
-[Haproxy](https://www.haproxy.com/) can use the docker nameserver in combination with [dynamic server templates](https://www.haproxy.com/blog/whats-new-haproxy-1-8/#server-template-configuration-directive) to discover the running container. Then the traditional proxy features can be leveraged to achieve powerful layer 7 load balancing whith http header manipulation and [chaos engeering](https://www.haproxy.com/blog/haproxy-layer-7-retries-and-chaos-engineering/) such as retries.
+[Haproxy](https://www.haproxy.com/) can use the docker nameserver in combination with [dynamic server templates](https://www.haproxy.com/blog/whats-new-haproxy-1-8/#server-template-configuration-directive) to discover the running container. Then the traditional proxy features can be leveraged to achieve powerful layer 7 load balancing with http header manipulation and [chaos engeering](https://www.haproxy.com/blog/haproxy-layer-7-retries-and-chaos-engineering/) such as retries.
 
 ```yml
 version: '3.8'
@@ -198,8 +204,8 @@ backend whoami
 
 ### Traefik
 
-The previous method is already pretty decent. However, you may have noticed that it requires knowing which services should be discovered
-and also the number of replicas to discover is hard coded. [Traefik](https://traefik.io/), a container native edge router, solves both problems. As long as we enable Traefik via [label](https://doc.traefik.io/traefik/v1.4/configuration/backends/docker/#labels-overriding-default-behaviour), the service will be discovered. This decentralized the configuration. It is as if each service registers itself. 
+The previous method is already pretty decent. However, you may have noticed that it requires knowing which services should be discovered and also the number of replicas to discover is hard coded. [Traefik](https://traefik.io/), a container native edge router, solves both problems. As long as we enable Traefik via [label](https://doc.traefik.io/traefik/v1.4/configuration/backends/docker/#labels-overriding-default-behaviour), the service will be discovered. This decentralized the configuration. It is as if each service registers itself. 
+
 The label can also be used to [inspect and manipulate http headers](https://doc.traefik.io/traefik/middlewares/headers/).
 
 ```yml
@@ -236,10 +242,11 @@ services:
 
 ### Consul
 
-[Consul](https://www.consul.io/) is a tool for service discovery and configuration management. Services have to be registered via API request. It is a more complex solution that probably only makes sense in bigger clusters, but can be very powerful. Usually it recommended running this on bare metal and not in a container. You could install it alongside, the docker host on each server in your cluster. 
+[Consul](https://www.consul.io/) is a tool for service discovery and configuration management. Services have to be registered via API request. It is a more complex solution that probably only makes sense in bigger clusters, but can be very powerful. Usually it recommended running this on bare metal and not in a container. You could install it alongside the docker host on each server in your cluster. 
 
 In this example it has been paired with the [registrator image](https://github.com/gliderlabs/registrator), which takes care of registering the docker services in consuls catalog. 
-The catalog can be leveraged in many ways. One of the is to use [consul-template](https://github.com/hashicorp/consul-template). 
+
+The catalog can be leveraged in many ways. One of them is to use [consul-template](https://github.com/hashicorp/consul-template). 
 
 Note that consul comes with its own DNS resolver so in this instance the docker DNS resolver is somewhat neglected.
 
@@ -281,7 +288,24 @@ services:
 
 ```
 
-Consul template takes a template file and rendered it according to the content of consuls catalog. 
+Dockerfile for custom proxy image with consul template backed in.
+```Dockerfile
+FROM nginx
+
+RUN curl https://releases.hashicorp.com/consul-template/0.25.1/consul-template_0.25.1_linux_amd64.tgz \
+  > consul-template_0.25.1_linux_amd64.tgz
+
+RUN gunzip -c consul-template_0.25.1_linux_amd64.tgz | tar xvf -
+
+RUN mv consul-template /usr/sbin/consul-template
+RUN rm /etc/nginx/conf.d/default.conf
+ADD proxy.conf.ctmpl /etc/nginx/conf.d/
+ADD consul-template.hcl /
+
+CMD [ "/bin/bash", "-c", "/etc/init.d/nginx start && consul-template -config=consul-template.hcl" ]
+```
+
+Consul template takes a template file and renders it according to the content of consuls catalog. 
 
 ```conf
 upstream whoami {
@@ -298,7 +322,7 @@ server {
 }
 ```
 
-After the template has been changed, the restart command is performed.
+After the template has been changed, the restart command is executed.
 
 ```conf
 consul {
@@ -321,7 +345,9 @@ template {
 
 ## Conclusion
 
-There are many ways to go about it. Below are a few example options. Of course there are more tools out there and other combinations possible. I have shown how the built in features work and also show cased some advanced strategies to do service discovery and loadbalancing. Below is a feature table of these examples.
+There are many ways to go about it. I have shown how the built in features work and also some advanced strategies to do service discovery and loadbalancing. 
+
+Below is a feature table of these examples.
 
 |                   | Built In  | HAProxy          | Traefik      | Consul-Template        |
 |-------------------|-----------|------------------|--------------|------------------------|
@@ -329,8 +355,5 @@ There are many ways to go about it. Below are a few example options. Of course t
 | Service Discovery | Automatic | Server Templates | Label System | KV Store + Template    |
 | Health Checks     | Yes       | Yes              | Yes          | Yes                    |
 | Load Balancing    | L4        | L4, L7           | L4, L7       | L4, L7                 |
-| Sticky Session    | Yes       | Yes              | Yes          | Depends on proxy       |
+| Sticky Session    | No        | Yes              | Yes          | Depends on proxy       |
 | Metrics           | No        | Stats Page       | Dashboard    | Dashboard              |
-
-
-https://github.com/bluebrown/docker-sd-and-lb-strategies
